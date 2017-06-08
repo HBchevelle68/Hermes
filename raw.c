@@ -1,87 +1,109 @@
-#include <stdio.h> 
+#include <stdio.h>
 #include <string.h>
-#include <stdlib.h> 
-#include <errno.h> 
-
-#include <sys/socket.h>
-#include <netinet/tcp.h>	//tcp header
-#include <netinet/udp.h>
-#include <netinet/ip.h>		//ip header
-#include <sys/ioctl.h>		//sys calls
-#include <arpa/inet.h>
-#include <net/if.h>   
+#include <stdlib.h>
+#include <errno.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/udp.h>
+#include <netinet/ip.h>
 
-#define UDP_PROTO 16
+/*
+	The udp checksum is only performed on certain data
+	This stuct contains the data required
+*/
+
+struct udpchk {
+	u_int32_t source_address;
+    u_int32_t dest_address;
+    u_int8_t placeholder;
+    u_int8_t protocol;
+    u_int16_t udp_length;
+};
+
 
 unsigned short csum (unsigned short *buf, int nwords);
+unsigned short CheckSum(unsigned short *buffer, int size);
 
 int main(int argc, char* argv[]){
 
-	int raw_sock, opt = 1;
-	const int* op = &opt;
+	int raw_sock;// opt = 1;
+	//const int* op = &opt;
 
-	struct ip* iph;
-	struct udphdr* udp;
+	struct iphdr* iph;
+	struct udphdr* udph;
+	struct udpchk uchk;
 	struct sockaddr_in sin;
-
+	char* temp_csum;
 
 	// Submit request for a socket descriptor to look up interface.
-	if ((raw_sock = socket(AF_INET, SOCK_RAW, IPPROTO_UDP)) < 0) {
+	if ((raw_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
 		perror("socket() raw socket creation failed ");
 		exit(EXIT_FAILURE);
 	}
 
 	char dgram[4096];
 	memset(dgram, 0, sizeof(dgram));
+	
 
-	iph = (struct ip*) dgram;
-	udp = (struct udphdr*) dgram + sizeof(struct ip);
+	iph = (struct iphdr*) dgram;
 
+	udph = (struct udphdr*) (dgram + sizeof(struct iphdr));
+
+	char* data = dgram + sizeof(struct iphdr) + sizeof(struct udphdr);
+	strcpy(data , "Wooo it worked!");
 
 	sin.sin_family = AF_INET;
-	sin.sin_port = htons(53);
-	sin.sin_addr.s_addr = inet_addr("8.8.8.8");
+    sin.sin_port = htons(80);
+    sin.sin_addr.s_addr = inet_addr ("8.8.8.8");
+     
+    //Fill in the IP Header
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->tot_len = sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data);
+    iph->id = htonl (54321); 
+    iph->frag_off = 0;
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_UDP;
+    iph->check = 0;      
+    iph->saddr = inet_addr ("192.168.100.100"); 
+    iph->daddr = sin.sin_addr.s_addr;
 
+	udph->source = htons (6666);
+    udph->dest = htons (8622);
+    udph->len = htons(sizeof(struct udphdr) + strlen(data)); 
+    udph->check = 0;
 
-	iph->ip_hl = 5;
-	iph->ip_v = 4;
-	iph->ip_tos = 16;
-	iph->ip_len = sizeof (struct ip) + sizeof (struct udphdr);	/* no payload */
-	iph->ip_id = htonl (54321);	/* the value doesn't matter here */
-	iph->ip_off = 0;
-	iph->ip_ttl = 255;
-	iph->ip_p = UDP_PROTO;
-	iph->ip_sum = 0;		/* set it to 0 before computing the actual checksum later */
-	iph->ip_src.s_addr = inet_addr ("192.168.175.131");
-	iph->ip_dst.s_addr = inet_addr ("8.8.8.8");
+	iph->check = CheckSum((unsigned short*)dgram, iph->tot_len);
+	
+	//begin udp checksum
+	uchk.source_address = iph->saddr;
+    uchk.dest_address = sin.sin_addr.s_addr;
+    uchk.placeholder = 0;
+    uchk.protocol = IPPROTO_UDP;
+    uchk.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
 
-	udp->uh_sport = htons(12345);
-	udp->uh_dport = htons(53);
-	udp->uh_ulen = htons(sizeof(struct udphdr));
-	udp->uh_sum = 0; //auto handled by kernel
+    int s = sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data);
+    temp_csum = malloc(sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data));
 
-	iph->ip_sum = csum((unsigned short*)dgram, sizeof(struct ip) + sizeof(struct udphdr));
+    memcpy(temp_csum, (char*) &uchk, sizeof(struct udpchk));
+    memcpy(temp_csum + sizeof(struct udpchk), udph, sizeof(struct udphdr) + strlen(data));
 
-	if(setsockopt(raw_sock, IPPROTO_IP, IP_HDRINCL, op, sizeof(opt)) < 0){
-		perror("setsockopt() error");
-		exit(-1);
-	}
-	else
-		printf("setsockopt() is OK.\n");
+    udph->check = CheckSum((unsigned short*) temp_csum, s);
 
 	printf("Trying...\n");
 	printf("Using raw socket and UDP protocol\n");
 
 	for(int count = 0; count <= 20; count++){
-		if(sendto(raw_sock, dgram, iph->ip_len, 0, (struct sockaddr*) &sin, sizeof(sin)) < 0){
+		if(sendto(raw_sock, dgram, iph->tot_len, 0, (struct sockaddr*) &sin, sizeof(sin)) < 0){
 			perror("sendto() failed");
 			exit(-1);
 		}
 		else {
 			printf("UDP Count #%d \n", count);
 		}
-		sleep(1);
+		//sleep(1);
 	}
 
 	close(raw_sock);
@@ -89,11 +111,18 @@ int main(int argc, char* argv[]){
 	return 0;
 }
 
-unsigned short csum (unsigned short *buf, int nwords) {
-  unsigned long sum;
-  for (sum = 0; nwords > 0; nwords--)
-    sum += *buf++;
-  sum = (sum >> 16) + (sum & 0xffff);
-  sum += (sum >> 16);
-  return ~sum;
+
+unsigned short CheckSum(unsigned short *buffer, int size){
+    unsigned long cksum=0;
+    while(size >1){
+        cksum+=*buffer++;
+        size -=sizeof(unsigned short);
+    }
+    if(size){
+        cksum += *(unsigned char*)buffer;
+    }
+
+    cksum = (cksum >> 16) + (cksum & 0xffff);
+    cksum += (cksum >>16);
+    return (unsigned short)(~cksum);
 }
