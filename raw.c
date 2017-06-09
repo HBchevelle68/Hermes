@@ -10,7 +10,8 @@
 
 /*
 	The udp checksum is only performed on certain data
-	This stuct contains the data required
+	and the UDP head. This stuct contains the extra
+	data required for the checksum
 */
 
 struct udpchk {
@@ -27,8 +28,7 @@ unsigned short CheckSum(unsigned short *buffer, int size);
 
 int main(int argc, char* argv[]){
 
-	int raw_sock;// opt = 1;
-	//const int* op = &opt;
+	int raw_sock;
 
 	struct iphdr* iph;
 	struct udphdr* udph;
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]){
 	struct sockaddr_in sin;
 	char* temp_csum;
 
-	// Submit request for a socket descriptor to look up interface.
+	//create raw socket
 	if ((raw_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
 		perror("socket() raw socket creation failed ");
 		exit(EXIT_FAILURE);
@@ -69,12 +69,14 @@ int main(int argc, char* argv[]){
     iph->check = 0;      
     iph->saddr = inet_addr ("192.168.100.100"); 
     iph->daddr = sin.sin_addr.s_addr;
-
+	
+	//Fill in the IP Header
 	udph->source = htons (6666);
     udph->dest = htons (8622);
     udph->len = htons(sizeof(struct udphdr) + strlen(data)); 
     udph->check = 0;
 
+    //IP checksum
 	iph->check = CheckSum((unsigned short*)dgram, iph->tot_len);
 	
 	//begin udp checksum
@@ -84,13 +86,17 @@ int main(int argc, char* argv[]){
     uchk.protocol = IPPROTO_UDP;
     uchk.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
 
-    int s = sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data);
+    //size of IP header, UDP header, and data
+    int size = sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data);
+    //malloc mem 
     temp_csum = malloc(sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data));
 
+    //copy the specific data from udpchk structure 
     memcpy(temp_csum, (char*) &uchk, sizeof(struct udpchk));
+    //copy the UDP header after udpchk structure 
     memcpy(temp_csum + sizeof(struct udpchk), udph, sizeof(struct udphdr) + strlen(data));
-
-    udph->check = CheckSum((unsigned short*) temp_csum, s);
+    //compute checksum and store to UDP headers
+    udph->check = CheckSum((unsigned short*) temp_csum, size);
 
 	printf("Trying...\n");
 	printf("Using raw socket and UDP protocol\n");
@@ -106,6 +112,7 @@ int main(int argc, char* argv[]){
 		//sleep(1);
 	}
 
+	free(temp_csum);
 	close(raw_sock);
 	
 	return 0;
