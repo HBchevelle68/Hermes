@@ -7,7 +7,9 @@
 #include <arpa/inet.h>
 #include <netinet/udp.h>
 #include <netinet/ip.h>
+#include <netinet/ip_icmp.h>  // struct icmp, ICMP_ECHO
 
+//#include "udp.h";
 
 unsigned short CheckSum(unsigned short *buffer, int size);
 void usage();

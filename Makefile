@@ -1,12 +1,12 @@
-OBJS = udpFuzz.o
+OBJS = hermes.o
 CC = gcc
 CFLAGS = -c -Wall
 
 all: $(OBJS)
-	$(CC) $(OBJS) -o udpFuzz
+	$(CC) $(OBJS) -o hermes
 
-udpFuzz.o: udpFuzz.c
-	$(CC) $(CFLAGS) udpFuzz.c
+hermes.o: hermes.c udp.h
+	$(CC) $(CFLAGS) hermes.c
 
 clean:
-	rm *.o udpFuzz
+	rm *.o hermes
