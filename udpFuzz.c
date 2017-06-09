@@ -10,14 +10,15 @@
 
 
 unsigned short CheckSum(unsigned short *buffer, int size);
+void usage();
 
 /*
-	The udp checksum is only performed on certain data
-	and the UDP head. This stuct contains the extra
-	data required for the checksum
+    The udp checksum is only performed on certain data
+    and the UDP head. This stuct contains the extra
+    data required for the checksum
 */
 struct udpchk {
-	u_int32_t source_address;
+    u_int32_t source_address;
     u_int32_t dest_address;
     u_int8_t placeholder;
     u_int8_t protocol;
@@ -28,32 +29,43 @@ struct udpchk {
 
 int main(int argc, char* argv[]){
 
-	int raw_sock;
+    int raw_sock, pcktcount;
+    char* temp_csum;
+    struct iphdr* iph;
+    struct udphdr* udph;
+    struct udpchk uchk;
+    struct sockaddr_in sin;
 
-	struct iphdr* iph;
-	struct udphdr* udph;
-	struct udpchk uchk;
-	struct sockaddr_in sin;
-	char* temp_csum;
+    if(argc < 3) {
+        usage();
+        return 0;
+    }
+    
+    if(argv[2][0] == '-' && argv[2][1] == 'c'){
+        pcktcount = atoi(argv[3]);
+    } 
+    else {
+        usage();
+        return 0;
+    }
+    //create raw socket
+    if ((raw_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
+        perror("socket() raw socket creation failed ");
+        exit(EXIT_FAILURE);
+    }
 
-	//create raw socket
-	if ((raw_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
-		perror("socket() raw socket creation failed ");
-		exit(EXIT_FAILURE);
-	}
+    char dgram[4096];
+    memset(dgram, 0, sizeof(dgram));
+    
+    iph = (struct iphdr*) dgram;
+    udph = (struct udphdr*) (dgram + sizeof(struct iphdr));
 
-	char dgram[4096];
-	memset(dgram, 0, sizeof(dgram));
-	
-	iph = (struct iphdr*) dgram;
-	udph = (struct udphdr*) (dgram + sizeof(struct iphdr));
+    char* data = dgram + sizeof(struct iphdr) + sizeof(struct udphdr);
+    strcpy(data , "Wooo it worked!");
 
-	char* data = dgram + sizeof(struct iphdr) + sizeof(struct udphdr);
-	strcpy(data , "Wooo it worked!");
-
-	sin.sin_family = AF_INET;
+    sin.sin_family = AF_INET;
     sin.sin_port = htons(80);
-    sin.sin_addr.s_addr = inet_addr ("8.8.8.8");
+    sin.sin_addr.s_addr = inet_addr (argv[1]);
      
     //Fill in the IP Header
     iph->ihl = 5;
@@ -67,18 +79,18 @@ int main(int argc, char* argv[]){
     iph->check = 0;      
     iph->saddr = inet_addr ("192.168.100.100"); 
     iph->daddr = sin.sin_addr.s_addr;
-	
-	//Fill in the IP Header
-	udph->source = htons (6666);
+    
+    //Fill in the IP Header
+    udph->source = htons (6666);
     udph->dest = htons (8622);
     udph->len = htons(sizeof(struct udphdr) + strlen(data)); 
     udph->check = 0;
 
     //IP checksum
-	iph->check = CheckSum((unsigned short*)dgram, iph->tot_len);
-	
-	//begin udp checksum
-	uchk.source_address = iph->saddr;
+    iph->check = CheckSum((unsigned short*)dgram, iph->tot_len);
+    
+    //begin udp checksum
+    uchk.source_address = iph->saddr;
     uchk.dest_address = sin.sin_addr.s_addr;
     uchk.placeholder = 0;
     uchk.protocol = IPPROTO_UDP;
@@ -96,24 +108,23 @@ int main(int argc, char* argv[]){
     //compute checksum and store to UDP headers
     udph->check = CheckSum((unsigned short*) temp_csum, size);
 
-	printf("Trying...\n");
-	printf("Using raw socket and UDP protocol\n");
+    printf("Sending...\n");
 
-	for(int count = 0; count <= 20; count++){
-		if(sendto(raw_sock, dgram, iph->tot_len, 0, (struct sockaddr*) &sin, sizeof(sin)) < 0){
-			perror("sendto() failed");
-			exit(-1);
-		}
-		else {
-			printf("UDP Count #%d \n", count);
-		}
-		//sleep(1);
-	}
+    for(int count = 1; count <= pcktcount; count++){
+        if(sendto(raw_sock, dgram, iph->tot_len, 0, (struct sockaddr*) &sin, sizeof(sin)) < 0){
+            perror("sendto() failed");
+            exit(-1);
+        }
+        else {
+            printf("Sent UDP dgram #%d \n", count);
+        }
+        //sleep(1);
+    }
 
-	free(temp_csum);
-	close(raw_sock);
-	
-	return 0;
+    free(temp_csum);
+    close(raw_sock);
+    
+    return 0;
 }
 
 unsigned short CheckSum(unsigned short *buffer, int size){
@@ -129,4 +140,10 @@ unsigned short CheckSum(unsigned short *buffer, int size){
     cksum = (cksum >> 16) + (cksum & 0xffff);
     cksum += (cksum >>16);
     return (unsigned short)(~cksum);
+}
+
+void usage(){
+    printf("Usage: sudo ./udpFuzz [DEST ADDR] -c [PACKETS]\n\n");
+    printf("\t[DEST ADDR] \tIPv4 address of target\n");
+    printf("\t[PACKETS] \tNumber of packets to send\n");
 }
