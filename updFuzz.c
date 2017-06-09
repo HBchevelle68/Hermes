@@ -8,12 +8,14 @@
 #include <netinet/udp.h>
 #include <netinet/ip.h>
 
+
+unsigned short CheckSum(unsigned short *buffer, int size);
+
 /*
 	The udp checksum is only performed on certain data
 	and the UDP head. This stuct contains the extra
 	data required for the checksum
 */
-
 struct udpchk {
 	u_int32_t source_address;
     u_int32_t dest_address;
@@ -23,8 +25,6 @@ struct udpchk {
 };
 
 
-unsigned short csum (unsigned short *buf, int nwords);
-unsigned short CheckSum(unsigned short *buffer, int size);
 
 int main(int argc, char* argv[]){
 
@@ -45,9 +45,7 @@ int main(int argc, char* argv[]){
 	char dgram[4096];
 	memset(dgram, 0, sizeof(dgram));
 	
-
 	iph = (struct iphdr*) dgram;
-
 	udph = (struct udphdr*) (dgram + sizeof(struct iphdr));
 
 	char* data = dgram + sizeof(struct iphdr) + sizeof(struct udphdr);
@@ -117,7 +115,6 @@ int main(int argc, char* argv[]){
 	
 	return 0;
 }
-
 
 unsigned short CheckSum(unsigned short *buffer, int size){
     unsigned long cksum=0;
