@@ -26,7 +26,7 @@ struct udpchk {
 
 
 unsigned short CheckSum(unsigned short *buffer, int size);
-size_t buildUDP(int rawfd, int srcport, int destport, char* buffer);
+size_t buildUDP(int rawfd, int srcport, int destport, char* buffer, char* srcaddr, char* destaddr);
 
 
 #endif

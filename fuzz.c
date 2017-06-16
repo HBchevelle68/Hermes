@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 #include <netinet/udp.h>
 #include <netinet/ip.h>
-#include <netinet/ip_icmp.h>  // struct icmp, ICMP_ECHO
+
 
 #include "udp.h"
 
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]){
         return 0;
     }
     //create raw socket
-    if ((raw_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
+    if ((raw_sock = socket(PF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
         perror("socket() raw socket creation failed ");
         exit(EXIT_FAILURE);
     }
@@ -43,7 +43,7 @@ int main(int argc, char* argv[]){
     char dgram[4096];
     memset(dgram, 0, sizeof(dgram));
     
-    tot_len = buildUDP(raw_sock, 1, 1, dgram);
+    tot_len = buildUDP(raw_sock, 1, 1, dgram, argv[1], argv[2]);
 
 
     sin.sin_family = AF_INET;
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]){
 
 
 void usage(){
-    printf("Usage: sudo ./hermes [SRC ADDR] [DEST ADDR] -c [NUM]\n\n");
+    printf("Usage: sudo ./fuzz [SRC ADDR] [DEST ADDR] -c [NUM]\n\n");
     printf("\t[DEST ADDR] \tIPv4 address of target\n");
     printf("\t[NUM] \tNumber of packets to send\n");
 }

@@ -17,7 +17,7 @@ unsigned short CheckSum(unsigned short *buffer, int size){
 }
 
 
-size_t buildUDP(int rawfd, int srcport, int destport, char* buffer){
+size_t buildUDP(int rawfd, int srcport, int destport, char* buffer, char* srcaddr, char* destaddr){
 
 	char* temp_csum;
     struct iphdr* iph;
@@ -40,8 +40,8 @@ size_t buildUDP(int rawfd, int srcport, int destport, char* buffer){
     iph->ttl = 255;
     iph->protocol = IPPROTO_UDP;
     iph->check = 0;      
-    iph->saddr = inet_addr ("192.168.100.100"); 
-    iph->daddr = inet_addr ("8.8.8.8");
+    iph->saddr = inet_addr (srcaddr); 
+    iph->daddr = inet_addr (destaddr);
     
     //Fill in the IP Header
     udph->source = htons (srcport);
