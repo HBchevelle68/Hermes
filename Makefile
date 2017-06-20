@@ -1,15 +1,12 @@
-OBJS = fuzz.o udp.o
+OBJS = fuzz.o
 CC = gcc
 CFLAGS = -c -Wall
 
 all: $(OBJS)
 	$(CC) $(OBJS) -o fuzz
 
-fuzz.o: fuzz.c udp.h
+fuzz.o: fuzz.c
 	$(CC) $(CFLAGS) fuzz.c
-
-udp.o: udp.h udp.c
-	$(CC) $(CFLAGS) udp.c	
 
 clean:
 	rm *.o fuzz
