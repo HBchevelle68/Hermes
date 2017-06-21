@@ -10,6 +10,7 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <linux/if_packet.h>
+#include <netdb.h>
 
 /*
     The udp checksum is only performed on certain data
@@ -26,16 +27,21 @@ struct udpchk {
 
 void usage();
 unsigned short CheckSum(unsigned short *buffer, int size);
-size_t buildUDP(int rawfd, int srcport, int destport, char* buffer, char* srcaddr, char* destaddr);
 
 int main(int argc, char* argv[]){
 
     int rsfd, pcktcount;
     const int on = 1;
-    size_t tot_len;
+    char* temp_csum;
     char* name = "ens33";
-    struct sockaddr_in sin;
-    //struct sockaddr_ll if_addr;
+    struct sockaddr_in *ipv4, sin;
+    struct ip* iph;
+    struct udphdr* udph;
+    struct udpchk uchk;
+    struct addrinfo hints, *res;
+    void* tmp;
+
+    char* dst_ip = malloc(INET_ADDRSTRLEN);
 
     if(argc < 3) {
         usage();
@@ -59,39 +65,119 @@ int main(int argc, char* argv[]){
     //grab interface index
     struct ifreq interface;
     memset(&interface, 0, sizeof(struct ifreq));
-    strncpy((char*)interface.ifr_name, name, IF_NAMESIZE);
+    snprintf (interface.ifr_name, sizeof (interface.ifr_name), "%s", name);
     if(ioctl(rsfd, SIOCGIFINDEX, &interface) < 0){
         perror("IF index ioctl error: ");
+        exit(EXIT_FAILURE);
+    }
+    close(rsfd);
+
+    // Fill out hints for getaddrinfo().
+    memset (&hints, 0, sizeof (struct addrinfo));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = hints.ai_flags | AI_CANONNAME;
+
+    // Resolve target using getaddrinfo().
+    if (getaddrinfo (argv[2], NULL, &hints, &res) != 0) {
+        perror("getaddrinfo() error");
+        exit (EXIT_FAILURE);
+    }
+    printf("here\n");
+    ipv4 = (struct sockaddr_in *) res->ai_addr;
+    tmp = &(ipv4->sin_addr);
+    if (inet_ntop (AF_INET, tmp, dst_ip, INET_ADDRSTRLEN) == NULL) {
+         perror("inet)_ntop() error");
+        exit (EXIT_FAILURE);
+    }
+    freeaddrinfo (res);
+
+    printf("here1\n");
+
+    char dgram[IP_MAXPACKET];
+    memset(dgram, 0, sizeof(dgram));
+    
+    iph = (struct ip*) dgram;
+    udph = (struct udphdr*) (dgram + sizeof(struct ip));
+
+    char* data = dgram + sizeof(struct ip) + sizeof(struct udphdr);
+    strcpy(data , "Wooo it worked!");
+
+    //Fill in the IP Header
+    iph->ip_hl = 5;
+    iph->ip_v = IPVERSION;
+    iph->ip_tos = 0;
+    iph->ip_len = sizeof(struct ip) + sizeof(struct udphdr) + strlen(data);
+    iph->ip_id = htonl(0); 
+    iph->ip_off = 0;
+    iph->ip_ttl = MAXTTL;
+    iph->ip_p = IPPROTO_UDP;
+    iph->ip_sum = 0;
+    if(inet_pton(AF_INET, argv[1], &(iph->ip_src)) != 1){
+        perror("ip_src inet_pton() error: ");
+        exit(EXIT_FAILURE);
+    }
+    if(inet_pton(AF_INET, dst_ip, &(iph->ip_dst)) != 1){
+        perror("ip_src inet_pton() error: ");
+        exit(EXIT_FAILURE);
+    }
+    //IP header checksum
+    iph->ip_sum = CheckSum((unsigned short*)&iph, 20);
+    
+    //Fill in the IP Header
+    udph->source = htons(5555);
+    udph->dest = htons(5555);
+    udph->len = htons(sizeof(struct udphdr) + strlen(data)); 
+    udph->check = 0;
+
+    //begin udp checksum
+    uchk.source_address = iph->ip_src.s_addr;
+    uchk.dest_address = iph->ip_dst.s_addr;
+    uchk.placeholder = 0;
+    uchk.protocol = IPPROTO_UDP;
+    uchk.udp_length = htons(sizeof(struct udphdr) + strlen(data));
+
+    //size of IP header, UDP header, and data
+    int size = sizeof(struct ip) + sizeof(struct udphdr) + strlen(data);
+    //malloc mem 
+    temp_csum = malloc(sizeof(struct ip) + sizeof(struct udphdr) + strlen(data));
+
+    //copy the specific data from udpchk structure 
+    memcpy(temp_csum, (char*) &uchk, sizeof(struct udpchk));
+    //copy the UDP header after udpchk structure 
+    memcpy(temp_csum + sizeof(struct udpchk), udph, sizeof(struct udphdr) + strlen(data));
+    //compute checksum and store to UDP headers
+    udph->check = CheckSum((unsigned short*) temp_csum, size);
+
+    free(temp_csum);
+
+    //create raw socket
+    if ((rsfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
+        perror("socket() raw socket creation failed ");
         exit(EXIT_FAILURE);
     }
 
     // Set flag so socket expects IPv4 header.
     if (setsockopt (rsfd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
         perror ("setsockopt() failed to set IP_HDRINCL ");
-        exit (EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
 
     // Bind socket to interface index.
     if (setsockopt (rsfd, SOL_SOCKET, SO_BINDTODEVICE, &interface, sizeof(interface)) < 0) {
         perror ("setsockopt() failed to bind to interface ");
-        exit (EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
 
-    char dgram[4096];
-    memset(dgram, 0, sizeof(dgram));
-    tot_len = buildUDP(rsfd, 1, 1, dgram, argv[1], argv[2]);
-
-
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(80);
     sin.sin_addr.s_addr = inet_addr(argv[1]);
 
     printf("Sending...\n");
 
     for(int count = 1; count <= pcktcount; count++){
-        if(sendto(rsfd, dgram, tot_len, 0, (struct sockaddr*) &sin, sizeof(sin)) < 0){
+        if(sendto(rsfd, dgram, size, 0, (struct sockaddr*) &sin, sizeof(struct sockaddr)) < 0){
             perror("sendto() failed");
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
         else {
             printf("Sent UDP dgram #%d \n", count);
@@ -125,64 +211,4 @@ unsigned short CheckSum(unsigned short *buffer, int size){
     cksum = (cksum >> 16) + (cksum & 0xffff);
     cksum += (cksum >>16);
     return (unsigned short)(~cksum);
-}
-
-
-size_t buildUDP(int rawfd, int srcport, int destport, char* buffer, char* srcaddr, char* destaddr){
-
-    char* temp_csum;
-    struct iphdr* iph;
-    struct udphdr* udph;
-    struct udpchk uchk;
-
-    iph = (struct iphdr*) buffer;
-    udph = (struct udphdr*) (buffer + sizeof(struct iphdr));
-
-    char* data = buffer + sizeof(struct iphdr) + sizeof(struct udphdr);
-    strcpy(data , "Wooo it worked!");
-
-    //Fill in the IP Header
-    iph->ihl = 5;
-    iph->version = 4;
-    iph->tos = 0;
-    iph->tot_len = sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data);
-    iph->id = htonl (54321); 
-    iph->frag_off = 0;
-    iph->ttl = 255;
-    iph->protocol = IPPROTO_UDP;
-    iph->check = 0;      
-    iph->saddr = inet_addr (srcaddr); 
-    iph->daddr = inet_addr (destaddr);
-    
-    //Fill in the IP Header
-    udph->source = htons (srcport);
-    udph->dest = htons (destport);
-    udph->len = htons(sizeof(struct udphdr) + strlen(data)); 
-    udph->check = 0;
-
-    //IP checksum
-    iph->check = CheckSum((unsigned short*)buffer, iph->tot_len);
-    
-    //begin udp checksum
-    uchk.source_address = iph->saddr;
-    uchk.dest_address = iph->daddr;
-    uchk.placeholder = 0;
-    uchk.protocol = IPPROTO_UDP;
-    uchk.udp_length = htons(sizeof(struct udphdr) + strlen(data));
-
-    //size of IP header, UDP header, and data
-    int size = sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data);
-    //malloc mem 
-    temp_csum = malloc(sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data));
-
-    //copy the specific data from udpchk structure 
-    memcpy(temp_csum, (char*) &uchk, sizeof(struct udpchk));
-    //copy the UDP header after udpchk structure 
-    memcpy(temp_csum + sizeof(struct udpchk), udph, sizeof(struct udphdr) + strlen(data));
-    //compute checksum and store to UDP headers
-    udph->check = CheckSum((unsigned short*) temp_csum, size);
-
-    free(temp_csum);
-
-    return iph->tot_len;
 }
