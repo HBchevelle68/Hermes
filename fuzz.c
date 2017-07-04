@@ -129,7 +129,7 @@ int main(int argc, char* argv[]){
         exit(EXIT_FAILURE);
     }
     if(inet_pton(AF_INET, dst_ip, &(iph->ip_dst)) != 1){
-        perror("ip_src inet_pton() error: ");
+        perror("ip_dst inet_pton() error: ");
         exit(EXIT_FAILURE);
     }
     //IP header checksum
@@ -194,7 +194,6 @@ int main(int argc, char* argv[]){
         else {
             printf("\rSent UDP dgram #%d", count);
         }
-        
     }
     printf("\n");
     free(ifname);
