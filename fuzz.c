@@ -210,7 +210,7 @@ int main(int argc, char* argv[]){
 void usage(){
     printf("Usage: sudo ./fuzz [INTERFACE] [SRC ADDR] [DEST ADDR] -c [NUM]\n\n");
     printf("\t[INTERFACE] \tDesired interface to bind to\n");
-    printf("\t[DEST ADDR] \tIPv4 address of source - Can be spoofed :)\n");
+    printf("\t[SRC ADDR] \tIPv4 address of source - Can be spoofed :)\n");
     printf("\t[DEST ADDR] \tIPv4 address of target\n");
     printf("\t[NUM] \tNumber of packets to send\n");
 }
