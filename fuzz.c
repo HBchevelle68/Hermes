@@ -66,13 +66,13 @@ int main(int argc, char* argv[]){
     strcpy (src_ip, argv[2]);
     strcpy (dst_ip, argv[3]);
     
-    //create raw socket
+    //Create raw socket
     if ((rsfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
         perror("socket() raw socket creation failed ");
         exit(EXIT_FAILURE);
     }
 
-    //grab interface index
+    //Grab interface index
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     snprintf (ifr.ifr_name, sizeof(ifr.ifr_name), "%s", ifname);
@@ -84,18 +84,18 @@ int main(int argc, char* argv[]){
     printf ("Index for interface %s is %i\n", ifname, ifr.ifr_ifindex);
 
 
-    // For getaddrinfo().
+    //For getaddrinfo().
     memset (&hints, 0, sizeof (struct addrinfo));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = hints.ai_flags | AI_CANONNAME;
 
-    // Resolve dst_ip using getaddrinfo().
+    //Resolve dst_ip using getaddrinfo().
     if (getaddrinfo (dst_ip, NULL, &hints, &res) != 0) {
         perror("getaddrinfo() error: ");
         exit (EXIT_FAILURE);
     }
-    //convert from binary to text string
+    //Convert from binary to text string
     ipv4 = (struct sockaddr_in *) res->ai_addr;
     tmp = &(ipv4->sin_addr);
     if (inet_ntop (AF_INET, tmp, dst_ip, INET_ADDRSTRLEN) == NULL) {
@@ -135,29 +135,29 @@ int main(int argc, char* argv[]){
     //IP header checksum
     iph->ip_sum = checksum((unsigned short*)&iph, 20);
     
-    //Fill in the IP Header
+    //Fill in the UDP Header
     udph->source = htons(7777);
     udph->dest = htons(5555);
     udph->len = htons(8 + strlen(data)); 
     udph->check = 0;
 
-    //begin udp checksum
+    //Begin udp checksum
     uchk.source_address = iph->ip_src.s_addr;
     uchk.dest_address = iph->ip_dst.s_addr;
     uchk.placeholder = 0;
     uchk.protocol = IPPROTO_UDP;
     uchk.udp_length = htons(sizeof(struct udphdr) + strlen(data));
 
-    //size of IP header, UDP header, and data
+    //Size of IP header, UDP header, and data
     int size = sizeof(struct ip) + sizeof(struct udphdr) + strlen(data);
     //malloc mem 
     temp_csum = malloc(sizeof(struct ip) + sizeof(struct udphdr) + strlen(data));
 
-    //copy the specific data from udpchk structure 
+    //Copy the specific data from udpchk structure 
     memcpy(temp_csum, (char*) &uchk, sizeof(struct udpchk));
-    //copy the UDP header after udpchk structure 
+    //Copy the UDP header after udpchk structure 
     memcpy(temp_csum + sizeof(struct udpchk), udph, sizeof(struct udphdr) + strlen(data));
-    //compute checksum and store to UDP headers
+    //Compute checksum and store to UDP headers
     udph->check = checksum((unsigned short*) temp_csum, size);
 
     free(temp_csum);
@@ -166,21 +166,15 @@ int main(int argc, char* argv[]){
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = iph->ip_dst.s_addr;
 
-    //create raw socket
+    //Create raw socket
     if ((rsfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
         perror("socket() raw socket creation failed ");
         exit(EXIT_FAILURE);
     }
 
-    // Set flag so socket expects IPv4 header.
+    //Set flag so socket expects IPv4 header.
     if (setsockopt (rsfd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
         perror ("setsockopt() failed to set IP_HDRINCL: ");
-        exit(EXIT_FAILURE);
-    }
-
-    // Bind socket to ifr index.
-    if (setsockopt (rsfd, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr)) < 0) {
-        perror ("setsockopt() failed to bind to interface: ");
         exit(EXIT_FAILURE);
     }
 
@@ -204,7 +198,6 @@ int main(int argc, char* argv[]){
     
     return 0;
 }
-
 
 
 void usage(){
